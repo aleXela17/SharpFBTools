@@ -148,8 +148,6 @@ namespace SharpFBTools.Tools
 				this.listViewFB2Files.DoubleClick += new System.EventHandler(this.ListViewFB2FilesDoubleClick);
 				this.listViewFB2Files.ItemChecked +=
 					new System.Windows.Forms.ItemCheckedEventHandler(this.ListViewFB2FilesItemChecked);
-				this.listViewFB2Files.ItemCheck +=
-					new System.Windows.Forms.ItemCheckEventHandler(this.ListViewFB2FilesItemCheck);
 				this.listViewFB2Files.KeyPress +=
 					new System.Windows.Forms.KeyPressEventHandler(this.ListViewFB2FilesKeyPress);
 				this.listViewFB2Files.ColumnClick +=
@@ -173,8 +171,6 @@ namespace SharpFBTools.Tools
 				this.listViewFB2Files.DoubleClick -= new System.EventHandler(this.ListViewFB2FilesDoubleClick);
 				this.listViewFB2Files.ItemChecked -=
 					new System.Windows.Forms.ItemCheckedEventHandler(this.ListViewFB2FilesItemChecked);
-				this.listViewFB2Files.ItemCheck -=
-					new System.Windows.Forms.ItemCheckEventHandler(this.ListViewFB2FilesItemCheck);
 				this.listViewFB2Files.KeyPress -=
 					new System.Windows.Forms.KeyPressEventHandler(this.ListViewFB2FilesKeyPress);
 				this.listViewFB2Files.ColumnClick -=
@@ -691,29 +687,79 @@ namespace SharpFBTools.Tools
 		}
 		void ButtonGoClick(object sender, EventArgs e)
 		{
-			string s = textBoxAddress.Text.Trim();
-			if ( !string.IsNullOrWhiteSpace( s ) ) {
-				if ( s.Substring(s.Length - 1, 1) != "\\" )
-					s = textBoxAddress.Text = textBoxAddress.Text + "\\";
-				DirectoryInfo Info = new DirectoryInfo(s);
-				if ( Info.Exists )
-					generateFB2List( Info.FullName );
-				else
+			string DirPath = textBoxAddress.Text.Trim();
+			if (!string.IsNullOrWhiteSpace(DirPath)) {
+				DirectoryInfo Info = new DirectoryInfo(DirPath);
+				if (Info.Exists) {
+					// заполнение списка данными указанной папки
+					generateFB2List(Info.FullName);
+					// Переход в указанную папку
+					listViewFB2Files.Focus();
+					string CurrentDirPatch = textBoxAddress.Text.Trim();
+					// Проверка, является ли текуший адрес папки корнем диска
+					if (string.IsNullOrEmpty(Path.GetDirectoryName(CurrentDirPatch))) {
+						// Корень диска
+						if (listViewFB2Files.Items.Count > 0) {
+							ListViewItemType itemType = (ListViewItemType)listViewFB2Files.Items[0].Tag;
+							if (itemType.Type == "d") {
+								listViewFB2Files.Items[0].Selected = true;
+								listViewFB2Files.Items[0].Focused = true;
+							}
+						}
+					} else {
+						// Не корень диска
+						if (listViewFB2Files.Items.Count > 1) {
+							// Есть итемы
+							ListViewItemType itemType = (ListViewItemType)listViewFB2Files.Items[1].Tag;
+							if (itemType.Type == "d") {
+								listViewFB2Files.Items[1].Selected = true;
+								listViewFB2Files.Items[1].Focused = true;
+							} else if (itemType.Type == "f") {
+								listViewFB2Files.Items[0].Selected = true;
+								listViewFB2Files.Items[0].Focused = true;
+							}
+						} else {
+							// Нет ничего - только выход вверх
+							listViewFB2Files.Items[0].Selected = true;
+							listViewFB2Files.Items[0].Focused = true;
+						}
+					}
+				} else {
 					MessageBox.Show(
 						"Не удается найти папку " + textBoxAddress.Text + ".\nПроверьте правильность пути.", "Переход по выбранному адресу", MessageBoxButtons.OK, MessageBoxIcon.Error
 					);
+				}
 			}
 		}
 		void TextBoxAddressKeyPress(object sender, KeyPressEventArgs e)
 		{
 			if ( e.KeyChar == (char)Keys.Return ) {
-				// отображение папок и/или фалов в заданной папке
-				ButtonGoClick( sender, e );
+				if (textBoxAddress.Text.Length >= 3) {
+					// отображение папок и/или фалов в заданной папке
+					ButtonGoClick(sender, e);
+				}
 			} else if ( e.KeyChar == '/' || e.KeyChar == '*' || e.KeyChar == '<' || e.KeyChar == '>' || e.KeyChar == '?' || e.KeyChar == '"') {
 				e.Handled = true;
 			}
 		}
-
+		void TextBoxAddressTextChanged(object sender, EventArgs e)
+		{
+			if (!string.IsNullOrEmpty(textBoxAddress.Text)) {
+				if (textBoxAddress.Text.Length >= 3) {
+					if (textBoxAddress.Text.Substring(textBoxAddress.Text.Length - 2, 2) == "\\\\") {
+						textBoxAddress.Text = textBoxAddress.Text.Remove(textBoxAddress.Text.Length - 1, 1);
+						textBoxAddress.SelectionStart = textBoxAddress.Text.Length;
+					} else if (textBoxAddress.Text.Substring(textBoxAddress.Text.Length - 2, 2) == "\\.") {
+						textBoxAddress.Text = textBoxAddress.Text.Remove(textBoxAddress.Text.Length - 1, 1);
+						textBoxAddress.SelectionStart = textBoxAddress.Text.Length;
+					} else if (textBoxAddress.Text.Substring(textBoxAddress.Text.Length - 3, 3) == "\\..") {
+						textBoxAddress.Text = textBoxAddress.Text.Remove(textBoxAddress.Text.Length - 1, 1);
+						textBoxAddress.SelectionStart = textBoxAddress.Text.Length;
+					}
+				}
+			}
+			saveSettingsToXml();
+		}
 		void ListViewFB2FilesColumnClick(object sender, ColumnClickEventArgs e)
 		{
 			if ( e.Column == m_lvwColumnSorter.SortColumn ) {
@@ -732,65 +778,89 @@ namespace SharpFBTools.Tools
 		// обработка нажатия клавиш на списке папок и файлов
 		void ListViewFB2FilesKeyPress(object sender, KeyPressEventArgs e)
 		{
-			if ( listViewFB2Files.Items.Count > 0 && listViewFB2Files.SelectedItems.Count != 0 ) {
-				if ( e.KeyChar == (char)Keys.Return ) {
+			if (listViewFB2Files.Items.Count > 0 && listViewFB2Files.SelectedItems.Count != 0) {
+				if (e.KeyChar == (char)Keys.Return) {
 					ListViewItemType it = (ListViewItemType)listViewFB2Files.SelectedItems[0].Tag;
-					if ( it.Type == "d" || it.Type == "dUp" ) {
+					if (it.Type == "d" || it.Type == "dUp") {
 						// переход в выбранную папку
 						ListViewFB2FilesDoubleClick(sender, e);
-					} else if ( it.Type == "f" ) {
-						if ( listViewFB2Files.SelectedItems.Count == 1 ) {
+					} else if (it.Type == "f") {
+						if (listViewFB2Files.SelectedItems.Count == 1) {
+							// запуск выбранного действия над файлом
 							goHandlerWorker( cboxPressEnterForFB2, sender, e );
 							listViewFB2Files.SelectedItems[0].Selected = true;
 							listViewFB2Files.SelectedItems[0].Focused = true;
 						}
 					}
-					
-				} else if ( e.KeyChar == (char)Keys.Back ) {
-					string address = textBoxAddress.Text.Trim();
-					int index = address.LastIndexOf('\\');
-					string oldAddress = string.Empty;
-					if ( index < address.Length )
-						oldAddress = address.Substring(index+1);
-					// переход на каталог выше
-					ListViewItemType it = (ListViewItemType)listViewFB2Files.Items[0].Tag;
-					textBoxAddress.Text = it.Value;
-					generateFB2List( it.Value );
-					if ( !string.IsNullOrEmpty( oldAddress ) ) {
-						ListViewItem Item = listViewFB2Files.FindItemWithText(oldAddress);
-						if ( Item != null ) {
-							Item.Selected = true;
-							Item.Focused = true;
+				} else if (e.KeyChar == (char)Keys.Back) {
+					string CurrentDirPatch = textBoxAddress.Text.Trim();
+					// Проверка, является ли текуший адрес папки корнем диска
+					if (!string.IsNullOrEmpty(Path.GetDirectoryName(CurrentDirPatch))) {
+						// Не корень диска
+						int index = CurrentDirPatch.LastIndexOf('\\');
+						// Родительская Папка, которую надо выделить после перехода вверх
+						string DirUpName = index < CurrentDirPatch.Length ? CurrentDirPatch.Substring(index + 1) : string.Empty;
+						// переход на каталог выше
+						ListViewItemType it = (ListViewItemType)listViewFB2Files.Items[0].Tag;
+						textBoxAddress.Text = it.Value;
+						// заполнение списка данными указанной папки
+						generateFB2List(it.Value);
+						if (!string.IsNullOrEmpty(DirUpName)) {
+							ListViewItem Item = listViewFB2Files.FindItemWithText(DirUpName);
+							if (Item != null) {
+								Item.Selected = true;
+								Item.Focused = true;
+							}
 						}
 					}
 				}
 			}
 			e.Handled = true;
 		}
-		
-		// переход в выбранную папку
+
+		// Переход в выбранную папку
 		void ListViewFB2FilesDoubleClick(object sender, EventArgs e)
 		{
-			if( listViewFB2Files.Items.Count > 0 && listViewFB2Files.SelectedItems.Count != 0 ) {
+			if (listViewFB2Files.Items.Count > 0 && listViewFB2Files.SelectedItems.Count != 0) {
 				ListView.SelectedListViewItemCollection si = listViewFB2Files.SelectedItems;
 				ListViewItemType it = (ListViewItemType)si[0].Tag;
-				if( it.Type == "d" || it.Type == "dUp" ) {
-					string address = textBoxAddress.Text.Trim();
-					int index = address.LastIndexOf('\\');
-					string oldAddress = string.Empty;
-					if ( index < address.Length )
-						oldAddress = address.Substring(index+1);
+				if (it.Type == "dUp") {
+					string CurrentDirPatch = textBoxAddress.Text.Trim();
+					int index = CurrentDirPatch.LastIndexOf('\\');
+					// Родительская Папка, которую надо выделить после перехода вверх
+					string DirUpName = index < CurrentDirPatch.Length ? CurrentDirPatch.Substring(index + 1) : string.Empty;
 					textBoxAddress.Text = it.Value;
-					generateFB2List( it.Value );
-					if ( !string.IsNullOrEmpty( oldAddress ) ) {
-						ListViewItem Item = listViewFB2Files.FindItemWithText(oldAddress);
-						if ( Item != null ) {
+					// заполнение списка данными указанной папки
+					generateFB2List(it.Value);
+					if (!string.IsNullOrEmpty(DirUpName)) {
+						ListViewItem Item = listViewFB2Files.FindItemWithText(DirUpName);
+						if (Item != null) {
 							Item.Selected = true;
 							Item.Focused = true;
 						}
 					}
-				} else if( it.Type == "f" ){
-					if( listViewFB2Files.SelectedItems.Count == 1 ) {
+				} else if (it.Type == "d") {
+					textBoxAddress.Text = it.Value;
+					// заполнение списка данными указанной папки
+					generateFB2List(it.Value);
+					if (listViewFB2Files.Items.Count > 1) {
+						// Есть итемы
+						ListViewItemType item = (ListViewItemType)listViewFB2Files.Items[1].Tag;
+						if (item.Type == "d") {
+							listViewFB2Files.Items[1].Selected = true;
+							listViewFB2Files.Items[1].Focused = true;
+						} else {
+							listViewFB2Files.Items[0].Selected = true;
+							listViewFB2Files.Items[0].Focused = true;
+						}
+					} else {
+						// Нет ничего - только выход вверх
+						listViewFB2Files.Items[0].Selected = true;
+						listViewFB2Files.Items[0].Focused = true;
+					}
+				} else if (it.Type == "f") {
+					if (listViewFB2Files.SelectedItems.Count == 1) {
+						// запуск выбранного действия над файлом
 						goHandlerWorker( cboxDblClickForFB2, sender, e );
 						listViewFB2Files.SelectedItems[0].Selected = true;
 						listViewFB2Files.SelectedItems[0].Focused = true;
@@ -798,27 +868,20 @@ namespace SharpFBTools.Tools
 				}
 			}
 		}
-		void ListViewFB2FilesItemCheck(object sender, ItemCheckEventArgs e)
-		{
-			if( listViewFB2Files.Items.Count > 0 && listViewFB2Files.SelectedItems.Count != 0 ) {
-				// при двойном клике на папке ".." пометку не ставим
-				ConnectListsEventHandlers( false );
-				if( e.Index == 0 ) // ".."
-					e.NewValue = CheckState.Unchecked;
-				ConnectListsEventHandlers( true );
-			}
-		}
-		// пометка/снятие пометки по check на 0-й item - папка ".."
+
+		/// <summary>
+		/// Пометка/снятие пометки по check на 0-й item - папка ".."
+		/// </summary>
 		void ListViewFB2FilesItemChecked(object sender, ItemCheckedEventArgs e)
 		{
-			if( listViewFB2Files.Items.Count > 0 ) {
-				if( ((ListViewItemType)e.Item.Tag).Type == "dUp" ) {
-					ConnectListsEventHandlers( false );
-					if( e.Item.Checked )
-						MiscListView.CheckAllListViewItems( listViewFB2Files, true );
+			if (listViewFB2Files.Items.Count > 0) {
+				if (((ListViewItemType)e.Item.Tag).Type == "dUp") {
+					ConnectListsEventHandlers(false);
+					if (e.Item.Checked)
+						MiscListView.CheckAllListViewItems(listViewFB2Files, true);
 					else
-						MiscListView.UnCheckAllListViewItems( listViewFB2Files.CheckedItems );;
-					ConnectListsEventHandlers( true );
+						MiscListView.UnCheckAllListViewItems(listViewFB2Files.CheckedItems);
+					ConnectListsEventHandlers(true);
 				}
 			}
 		}
@@ -828,6 +891,7 @@ namespace SharpFBTools.Tools
 			if( listViewFB2Files.SelectedItems.Count == 1 ) {
 				ListViewItem SelectedItem = listViewFB2Files.SelectedItems[0];
 				if( SelectedItem != null ) {
+					tsslblProgress.Text = SelectedItem.Text; // Отображение в статус баре пути к выделенному файлу
 					TICoverDPILabel.Text = STICoverDPILabel.Text = "DPI";
 					TICoverPixelsLabel.Text = STICoverPixelsLabel.Text = "В пикселах";
 					TICoverLenghtLabel.Text = STICoverLenghtLabel.Text = "Размер";
@@ -890,23 +954,7 @@ namespace SharpFBTools.Tools
 		{
 			saveSettingsToXml();
 		}
-		void TextBoxAddressTextChanged(object sender, EventArgs e)
-		{
-			if ( !string.IsNullOrEmpty( textBoxAddress.Text ) ) {
-				if( textBoxAddress.Text.Substring(textBoxAddress.Text.Length - 2, 2) == "\\\\" ) {
-					textBoxAddress.Text = textBoxAddress.Text.Remove(textBoxAddress.Text.Length - 1, 1);
-					textBoxAddress.SelectionStart = textBoxAddress.Text.Length;
-				} else if( textBoxAddress.Text.Substring(textBoxAddress.Text.Length - 2, 2) == "\\." ) {
-					textBoxAddress.Text = textBoxAddress.Text.Remove(textBoxAddress.Text.Length-1, 1);
-					textBoxAddress.SelectionStart = textBoxAddress.Text.Length;
-				} else if( textBoxAddress.Text.Substring( textBoxAddress.Text.Length - 3, 3) == "\\.." ) {
-					textBoxAddress.Text = textBoxAddress.Text.Remove( textBoxAddress.Text.Length - 1, 1 );
-					textBoxAddress.SelectionStart = textBoxAddress.Text.Length;
-				}
-			}
-			saveSettingsToXml();
-		}
-		
+
 		void TICoversListViewSelectedIndexChanged(object sender, EventArgs e)
 		{
 			WorksWithBooks.viewCover( TICoversListView, picBoxTICover, TICoverDPILabel, TICoverPixelsLabel, TICoverLenghtLabel );
@@ -1833,6 +1881,14 @@ namespace SharpFBTools.Tools
 			}
 		}
 
+		private void tsslblProgress_MouseDown(object sender, MouseEventArgs e)
+		{
+			Clipboard.Clear();
+			Clipboard.SetText(tsslblProgress.Text);
+			if (tsslblProgress.Text != "=>")
+				MessageBox.Show("Путь к выделенной книге был скопирован в буфер обмена.", "SharpFBTools - Корректор");
+		}
 		#endregion
+
 	}
 }
